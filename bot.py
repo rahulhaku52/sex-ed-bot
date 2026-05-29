@@ -1,4 +1,4 @@
-import os, requests, feedparser, json, re, subprocess
+import os, requests, feedparser, json, random, re, subprocess
 
 BOT_TOKEN = os.environ['BOT_TOKEN']
 CHANNEL_ID = os.environ['CHANNEL_ID']
@@ -20,7 +20,7 @@ def save_posted(posted):
 def clean_html(raw):
     return re.sub(r'<[^>]+>', '', raw).strip()
 
-def create_message(title, summary):
+def create_rss_message(title, summary):
     return (
         f"📢 <b>Health Update | স্বাস্থ্য আপডেট</b>\n\n"
         f"🔹 <b>{title}</b>\n\n"
@@ -37,7 +37,7 @@ def fetch_new(posted_ids):
             title = entry.title
             summary = entry.summary if hasattr(entry, 'summary') else ""
             summary_clean = clean_html(summary)
-            msg = create_message(title, summary_clean)
+            msg = create_rss_message(title, summary_clean)
             return article_id, msg
     return None, None
 
@@ -65,6 +65,17 @@ def git_commit():
     except Exception as e:
         print(f"⚠️ Git commit failed: {e}")
 
+def fallback_from_bank():
+    try:
+        with open('posts.json', 'r', encoding='utf-8') as f:
+            posts = json.load(f)
+        if posts:
+            post = random.choice(posts)
+            return post['text']
+    except:
+        pass
+    return None
+
 def main():
     posted = load_posted()
     article_id, msg = fetch_new(posted)
@@ -73,12 +84,21 @@ def main():
         if res.get('ok'):
             posted.add(article_id)
             save_posted(posted)
-            print("✅ New article posted:", article_id)
+            print("✅ New WHO article posted:", article_id)
             git_commit()
         else:
-            print("❌ API error:", res)
+            print("❌ API error on RSS post:", res)
     else:
-        print("ℹ️ No new article in the feed. Skipping.")
+        print("ℹ️ No new RSS article. Trying posts.json bank...")
+        bank_msg = fallback_from_bank()
+        if bank_msg:
+            res = send_message(bank_msg)
+            if res.get('ok'):
+                print("📋 Posted from own bank.")
+            else:
+                print("❌ API error on bank post:", res)
+        else:
+            print("⚠️ No posts.json found or empty. Nothing to post.")
 
 if __name__ == "__main__":
     main()
