@@ -2,14 +2,16 @@ name: Auto Sex Ed Poster
 
 on:
   schedule:
-    - cron: '0 */4 * * *'   # প্রতি ৪ ঘণ্টায় (দিনে ৬ বার)
-  workflow_dispatch:          # ম্যানুয়ালি রান করার জন্য
+    - cron: '0 */4 * * *'   # প্রতি ৪ ঘণ্টায়
+  workflow_dispatch:
 
 jobs:
   post:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}  # গিট পুশের জন্য জরুরি
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
