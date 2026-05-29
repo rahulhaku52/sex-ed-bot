@@ -2,7 +2,7 @@ name: Auto Sex Ed Poster
 
 on:
   schedule:
-    - cron: '0 */12 * * *'   # প্রতি ১২ ঘণ্টায় (দিনে ২ বার)
+    - cron: '0 */4 * * *'   # প্রতি ১২ ঘণ্টায় (দিনে ২ বার)
   workflow_dispatch:          # ম্যানুয়ালি রান করার জন্য
 
 jobs:
