@@ -1,51 +1,20 @@
-import os, requests, feedparser, json, random, re, subprocess
+import os, json, random, requests, sys
 
-BOT_TOKEN = os.environ['BOT_TOKEN']
-CHANNEL_ID = os.environ['CHANNEL_ID']
+print("🔵 Script started")
+print("🔵 Current working directory:", os.getcwd())
+print("🔵 Files in directory:", os.listdir('.'))
 
-RSS_FEED = "https://www.who.int/feeds/entity/sexual-and-reproductive-health-and-research/en/rss.xml"
-LOG_FILE = "posted_articles.json"
+BOT_TOKEN = os.environ.get('BOT_TOKEN')
+CHANNEL_ID = os.environ.get('CHANNEL_ID')
 
-def load_posted():
-    try:
-        with open(LOG_FILE, 'r') as f:
-            return set(json.load(f))
-    except:
-        return set()
+if not BOT_TOKEN or not CHANNEL_ID:
+    print("❌ ERROR: BOT_TOKEN or CHANNEL_ID not set.")
+    sys.exit(1)
 
-def save_posted(posted):
-    with open(LOG_FILE, 'w') as f:
-        json.dump(list(posted), f)
+print(f"🔵 BOT_TOKEN starts with: {BOT_TOKEN[:10]}...")
+print(f"🔵 CHANNEL_ID: {CHANNEL_ID}")
 
-def clean_html(raw_html):
-    cleanr = re.compile('<.*?>')
-    cleantext = re.sub(cleanr, '', raw_html)
-    return cleantext.strip()
-
-def create_mixed_message(title, summary_en):
-    """ইংলিশ টাইটেল ও সামারিকে বাংলা-ইংলিশ মিক্সে রিরাইট করবে"""
-    message = (
-        f"📢 <b>Health Update | স্বাস্থ্য আপডেট</b>\n\n"
-        f"🔹 <b>{title}</b>\n\n"
-        f"📝 {summary_en[:250]}...\n\n"
-        f"<i>🔍 Source: World Health Organization (WHO)</i>\n"
-        f"#WHO #HealthUpdate #SexEd #স্বাস্থ্যকথা"
-    )
-    return message
-
-def fetch_new_article(posted_guids):
-    feed = feedparser.parse(RSS_FEED)
-    for entry in feed.entries:
-        article_id = entry.get('id') or entry.get('link')
-        if article_id not in posted_guids:
-            title = entry.title
-            summary = entry.summary if hasattr(entry, 'summary') else ""
-            summary_clean = clean_html(summary)
-            msg = create_mixed_message(title, summary_clean)
-            return article_id, msg
-    return None, None
-
-def send_to_telegram(text):
+def send_message(text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHANNEL_ID,
@@ -53,50 +22,49 @@ def send_to_telegram(text):
         "parse_mode": "HTML",
         "disable_web_page_preview": True
     }
-    return requests.post(url, json=payload).json()
-
-def git_commit():
-    """পরিবর্তিত posted_articles.json গিটে কমিট করে দেবে"""
+    print("🔵 Sending POST request to Telegram...")
     try:
-        subprocess.run(["git", "config", "user.name", "GitHub Action"], check=True)
-        subprocess.run(["git", "config", "user.email", "action@github.com"], check=True)
-        subprocess.run(["git", "add", LOG_FILE], check=True)
-        # কমিট করার মতো কিছু থাকলেই কেবল কমিট
-        diff = subprocess.run(["git", "diff", "--cached", "--quiet"], capture_output=True)
-        if diff.returncode != 0:  # পরিবর্তন আছে
-            subprocess.run(["git", "commit", "-m", "Update posted articles log"], check=True)
-            subprocess.run(["git", "push"], check=True)
-            print("✅ Log committed to repository.")
-        else:
-            print("ℹ️ No change in log, skipping commit.")
+        resp = requests.post(url, json=payload, timeout=10)
+        print(f"🔵 HTTP Status: {resp.status_code}")
+        data = resp.json()
+        print(f"🔵 Response JSON: {data}")
+        return data
     except Exception as e:
-        print(f"⚠️ Git commit failed: {e}")
+        print(f"❌ Request failed: {e}")
+        return None
 
 def main():
-    posted = load_posted()
-    article_id, message = fetch_new_article(posted)
-    if message:
-        res = send_to_telegram(message)
-        if res.get('ok'):
-            posted.add(article_id)
-            save_posted(posted)
-            print("✅ New WHO update posted:", article_id)
-            git_commit()  # লগ সেভ করতে গিটে পুশ
-        else:
-            print("❌ Failed to post:", res)
+    print("🔵 Attempting to load posts.json...")
+    try:
+        with open('posts.json', 'r', encoding='utf-8') as f:
+            content = f.read()
+            print(f"🔵 posts.json raw content (first 200 chars): {content[:200]}")
+            posts = json.loads(content)
+        print(f"🔵 Loaded {len(posts)} posts.")
+        if not posts:
+            print("❌ posts.json is empty. Exiting.")
+            return
+    except FileNotFoundError:
+        print("❌ posts.json file NOT FOUND. Make sure it's in the repository root and committed.")
+        return
+    except json.JSONDecodeError as e:
+        print(f"❌ Invalid JSON in posts.json: {e}")
+        return
+    except Exception as e:
+        print(f"❌ Error reading posts.json: {e}")
+        return
+
+    post = random.choice(posts)
+    text = post.get('text')
+    if not text:
+        print("❌ Selected post has no 'text' field.")
+        return
+    print(f"🔵 Selected post (first 100 chars): {text[:100]}")
+    result = send_message(text)
+    if result and result.get('ok'):
+        print("✅ SUCCESS: Message sent to channel!")
     else:
-        print("ℹ️ No new article in WHO feed. Trying own bank...")
-        try:
-            with open('posts.json', 'r', encoding='utf-8') as f:
-                posts = json.load(f)
-            if posts:
-                text = random.choice(posts)['text']
-                send_to_telegram(text)
-                print("📋 Posted from own bank.")
-            else:
-                print("⚠️ Bank empty.")
-        except:
-            print("❌ No posts.json found.")
+        print("❌ FAILED: Message not sent. Check response above.")
 
 if __name__ == "__main__":
     main()
