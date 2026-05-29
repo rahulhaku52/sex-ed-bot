@@ -1,14 +1,21 @@
-import os, requests, feedparser, json, random, re, subprocess
+import os, requests, feedparser, json, re, subprocess
 
 BOT_TOKEN = os.environ['BOT_TOKEN']
 CHANNEL_ID = os.environ['CHANNEL_ID']
 
-# RSS feed (WHO Sexual and Reproductive Health)
-RSS_FEED = "https://www.who.int/feeds/entity/sexual-and-reproductive-health-and-research/en/rss.xml"
+# ========== শিক্ষামূলক আরএসএস ফিড লিস্ট ==========
+RSS_FEEDS = [
+    "https://www.scarleteen.com/rss.xml",
+    "https://sexetc.org/feed/",
+    "https://www.loveisrespect.org/feed/",
+    "https://www.plannedparenthood.org/rss/news",
+    "https://www.nhs.uk/rss/sexual-health.xml",
+    "https://www.healthline.com/health-news/feed",
+]
+
 LOG_FILE = "posted_articles.json"
 
 def load_posted():
-    """ আগে পোস্ট করা আর্টিকেলের আইডি লোড করো """
     try:
         with open(LOG_FILE, 'r') as f:
             return set(json.load(f))
@@ -16,51 +23,51 @@ def load_posted():
         return set()
 
 def save_posted(posted):
-    """ পোস্ট করা আইডি সেট ফাইলে সংরক্ষণ করো """
     with open(LOG_FILE, 'w') as f:
         json.dump(list(posted), f)
 
 def clean_html(raw):
-    """ HTML ট্যাগ সরিয়ে পরিষ্কার টেক্সট দাও """
     return re.sub(r'<[^>]+>', '', raw).strip()
 
-def build_rss_message(title, summary):
-    """ RSS থেকে পাওয়া তথ্য দিয়ে সুন্দর মেসেজ তৈরি """
+def build_message(feed_title, title, summary):
+    """বাংলা+ইংরেজি মিক্সে একটি পোস্ট ফরম্যাট"""
     return (
-        f"📢 <b>Health Update | স্বাস্থ্য আপডেট</b>\n\n"
+        f"📚 <b>যৌনশিক্ষা ও সম্পর্ক টিপস</b>\n\n"
         f"🔹 <b>{title}</b>\n\n"
         f"📝 {summary[:300]}...\n\n"
-        f"<i>🔍 Source: World Health Organization (WHO)</i>\n"
-        f"#WHO #HealthUpdate #SexEd #স্বাস্থ্যকথা"
+        f"🌐 <i>Source: {feed_title}</i>\n"
+        f"#SexEducation #IntimacySafety #AdultHealth #শিক্ষা"
     )
 
-def fetch_new_article(posted_ids):
-    """ RSS থেকে একটি নতুন আর্টিকেল খুঁজে বের করো """
-    feed = feedparser.parse(RSS_FEED)
-    for entry in feed.entries:
-        article_id = entry.get('id') or entry.get('link')
-        if article_id not in posted_ids:
-            title = entry.title
-            summary = entry.summary if hasattr(entry, 'summary') else ""
-            clean_summary = clean_html(summary)
-            msg = build_rss_message(title, clean_summary)
-            return article_id, msg
+def fetch_first_new(posted_ids):
+    """সব ফিড থেকে প্রথম নতুন আর্টিকেল খুঁজে বের করো (সর্বোচ্চ ১টি)"""
+    for feed_url in RSS_FEEDS:
+        try:
+            feed = feedparser.parse(feed_url)
+            feed_name = feed.feed.title if 'title' in feed.feed else feed_url
+            for entry in feed.entries:
+                article_id = entry.get('id') or entry.get('link')
+                if article_id in posted_ids:
+                    continue
+                title = entry.title
+                summary = entry.summary if hasattr(entry, 'summary') else ""
+                clean_summary = clean_html(summary)
+                msg = build_message(feed_name, title, clean_summary)
+                return article_id, msg
+        except Exception as e:
+            print(f"⚠️ Error parsing {feed_url}: {e}")
     return None, None
 
 def send_to_telegram(text):
-    """ টেলিগ্রাম API ব্যবহার করে মেসেজ পাঠাও """
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {
+    return requests.post(url, json={
         "chat_id": CHANNEL_ID,
         "text": text,
         "parse_mode": "HTML",
         "disable_web_page_preview": True
-    }
-    resp = requests.post(url, json=payload)
-    return resp.json()
+    }).json()
 
 def git_commit_log():
-    """ posted_articles.json ফাইল গিটে কমিট ও পুশ করো """
     try:
         subprocess.run(["git", "config", "user.name", "GitHub Actions"], check=True)
         subprocess.run(["git", "config", "user.email", "actions@github.com"], check=True)
@@ -69,51 +76,28 @@ def git_commit_log():
         if diff.returncode != 0:
             subprocess.run(["git", "commit", "-m", "Update posted log"], check=True)
             subprocess.run(["git", "push"], check=True)
-            print("✅ Log committed to repo.")
+            print("✅ Log committed.")
         else:
-            print("ℹ️  No change in log, skipping commit.")
+            print("ℹ️ No change in log.")
     except Exception as e:
-        print(f"⚠️  Git commit error (non-fatal): {e}")
-
-def fallback_bank_post():
-    """ যদি RSS নতুন না দেয়, তাহলে posts.json থেকে র‌্যান্ডম পোস্ট নাও """
-    try:
-        with open('posts.json', 'r', encoding='utf-8') as f:
-            posts = json.load(f)
-        if posts:
-            post = random.choice(posts)
-            return post['text']
-    except Exception as e:
-        print(f"⚠️  posts.json পড়তে সমস্যা: {e}")
-    return None
+        print(f"⚠️ Git commit error: {e}")
 
 def main():
-    print("🔍 Checking RSS feed...")
+    print("🔍 Checking multiple education feeds (max 1 post)...")
     posted = load_posted()
-    article_id, message = fetch_new_article(posted)
+    article_id, msg = fetch_first_new(posted)
 
-    if message:
-        print("✅ New article found. Sending to Telegram...")
-        res = send_to_telegram(message)
+    if msg:
+        res = send_to_telegram(msg)
         if res.get('ok'):
             posted.add(article_id)
             save_posted(posted)
-            print("🎉 WHO article posted successfully:", article_id)
+            print("✅ New article posted:", article_id[:60])
             git_commit_log()
         else:
-            print("❌ Failed to send RSS post. API response:", res)
+            print("❌ Failed to post:", res)
     else:
-        print("ℹ️  No new article in RSS. Trying posts.json bank...")
-        bank_msg = fallback_bank_post()
-        if bank_msg:
-            print("📋 Sending from own bank...")
-            res = send_to_telegram(bank_msg)
-            if res.get('ok'):
-                print("✅ Own bank post sent.")
-            else:
-                print("❌ Bank post failed. API response:", res)
-        else:
-            print("❌ No posts.json found or empty. Nothing to post.")
+        print("ℹ️ No new articles across all feeds. Skipping.")
 
 if __name__ == "__main__":
     main()
