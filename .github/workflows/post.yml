@@ -1,8 +1,8 @@
-name: Auto Sex Ed Poster
+name: Sex Ed Auto Poster
 
 on:
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '*/30 * * * *'   # প্রতি ১ ঘণ্টায় (দিনে ২৪ বার) – একটিমাত্র পোস্ট হবে
   workflow_dispatch:
 
 jobs:
@@ -21,3 +21,4 @@ jobs:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
         run: python bot.py
+  
