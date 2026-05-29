@@ -21,7 +21,6 @@ def clean_html(raw):
     return re.sub(r'<[^>]+>', '', raw).strip()
 
 def create_message(title, summary):
-    # বাংলা + ইংরেজি মিক্সে রিরাইট
     return (
         f"📢 <b>Health Update | স্বাস্থ্য আপডেট</b>\n\n"
         f"🔹 <b>{title}</b>\n\n"
