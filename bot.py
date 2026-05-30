@@ -9,30 +9,28 @@ DEEPSEEK_API_KEY = os.environ.get('DEEPSEEK_API_KEY')
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 MISTRAL_API_KEY = os.environ.get('MISTRAL_API_KEY')
 
-# ========== API Clients Initialize ==========
-# Gemini
+# ========== API Clients ==========
+gemini_model = None
 if GEMINI_API_KEY:
     import google.generativeai as genai
     genai.configure(api_key=GEMINI_API_KEY)
     gemini_model = genai.GenerativeModel('gemini-2.0-flash')
 
-# DeepSeek
 deepseek_client = None
 if DEEPSEEK_API_KEY:
     from openai import OpenAI
     deepseek_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
-# Groq
 groq_client = None
 if GROQ_API_KEY:
     from groq import Groq
     groq_client = Groq(api_key=GROQ_API_KEY)
 
-# Mistral
 mistral_client = None
 if MISTRAL_API_KEY:
-    from mistralai import Mistral
-    mistral_client = Mistral(api_key=MISTRAL_API_KEY)
+    from mistralai.client import MistralClient
+    from mistralai.models.chat_completion import ChatMessage
+    mistral_client = MistralClient(api_key=MISTRAL_API_KEY)
 
 RSS_FEEDS = [
     "https://www.scarleteen.com/rss.xml",
@@ -89,18 +87,7 @@ def is_important(text):
     text_lower = text.lower()
     return any(keyword in text_lower for keyword in IMPORTANT_KEYWORDS)
 
-def try_gemini(prompt):
-    """Gemini API চেষ্টা"""
-    if not GEMINI_API_KEY:
-        return None
-    try:
-        response = gemini_model.generate_content(prompt)
-        return response.text.strip()
-    except:
-        return None
-
 def try_deepseek(prompt):
-    """DeepSeek API চেষ্টা"""
     if not deepseek_client:
         return None
     try:
@@ -114,8 +101,16 @@ def try_deepseek(prompt):
     except:
         return None
 
+def try_gemini(prompt):
+    if not gemini_model:
+        return None
+    try:
+        response = gemini_model.generate_content(prompt)
+        return response.text.strip()
+    except:
+        return None
+
 def try_groq(prompt):
-    """Groq API চেষ্টা"""
     if not groq_client:
         return None
     try:
@@ -130,13 +125,13 @@ def try_groq(prompt):
         return None
 
 def try_mistral(prompt):
-    """Mistral API চেষ্টা"""
     if not mistral_client:
         return None
     try:
-        response = mistral_client.chat.complete(
+        messages = [ChatMessage(role="user", content=prompt)]
+        response = mistral_client.chat(
             model="mistral-small-latest",
-            messages=[{"role": "user", "content": prompt}],
+            messages=messages,
             temperature=0.8,
             max_tokens=1500
         )
@@ -145,10 +140,9 @@ def try_mistral(prompt):
         return None
 
 def generate_bangla_story(title, summary_en, source_name):
-    """সব API ট্রাই করো, প্রথমে যে কাজ করবে সেটাই ব্যবহার করো"""
     prompt = BANGLA_PROMPT.format(title=title, summary=summary_en[:400], source=source_name)
     
-    # ১. DeepSeek (সেরা ফ্রি)
+    # ১. DeepSeek
     print("  🟡 Trying DeepSeek...")
     result = try_deepseek(prompt)
     if result:
@@ -180,7 +174,6 @@ def generate_bangla_story(title, summary_en, source_name):
     return None
 
 def build_rss_fallback(feed_name, title, summary):
-    """সব API ব্যর্থ হলে RSS সরাসরি"""
     return (
         f"🔹 <b>{title}</b>\n\n"
         f"📝 {summary[:350]}...\n\n"
@@ -202,13 +195,9 @@ def fetch_first_important(posted_ids):
                 combined = title + " " + summary
                 if is_important(combined):
                     clean_summary = clean_html(summary)
-                    
-                    # প্রথমে AI দিয়ে বাংলা গল্প বানানোর চেষ্টা
                     bangla_story = generate_bangla_story(title, clean_summary, feed_name)
                     if bangla_story:
                         return article_id, bangla_story
-                    
-                    # AI ব্যর্থ হলে RSS ফরম্যাট
                     msg = build_rss_fallback(feed_name, title, clean_summary)
                     return article_id, msg
         except Exception as e:
@@ -240,7 +229,7 @@ def git_commit_log():
         print(f"⚠️  Git commit error: {e}")
 
 def main():
-    print("🔍 Scanning RSS feeds for Bangla story generation...")
+    print("🔍 Scanning RSS feeds...")
     posted = load_posted()
     article_id, msg = fetch_first_important(posted)
 
