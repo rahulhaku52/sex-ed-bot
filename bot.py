@@ -1,9 +1,9 @@
-import os, requests, feedparser, json, re, subprocess
+import os, requests, feedparser, json, re
 
 BOT_TOKEN = os.environ['BOT_TOKEN']
 CHANNEL_ID = os.environ['CHANNEL_ID']
+CACHE_FILE = "posted_cache.json"  # ক্যাশ ফাইলের নাম
 
-# ========== শিক্ষামূলক আরএসএস ফিড লিস্ট ==========
 RSS_FEEDS = [
     "https://www.scarleteen.com/rss.xml",
     "https://sexetc.org/feed/",
@@ -13,24 +13,23 @@ RSS_FEEDS = [
     "https://www.healthline.com/health-news/feed",
 ]
 
-LOG_FILE = "posted_articles.json"
-
 def load_posted():
+    """ক্যাশ থেকে পোস্ট করা আইডি সেট লোড করো"""
     try:
-        with open(LOG_FILE, 'r') as f:
+        with open(CACHE_FILE, 'r') as f:
             return set(json.load(f))
     except:
         return set()
 
 def save_posted(posted):
-    with open(LOG_FILE, 'w') as f:
+    """ক্যাশে আইডি সেট সংরক্ষণ করো (Actions post-job ক্যাশ স্টেপের জন্য)"""
+    with open(CACHE_FILE, 'w') as f:
         json.dump(list(posted), f)
 
 def clean_html(raw):
     return re.sub(r'<[^>]+>', '', raw).strip()
 
 def build_message(feed_title, title, summary):
-    """বাংলা+ইংরেজি মিক্সে একটি পোস্ট ফরম্যাট"""
     return (
         f"📚 <b>যৌনশিক্ষা ও সম্পর্ক টিপস</b>\n\n"
         f"🔹 <b>{title}</b>\n\n"
@@ -40,7 +39,7 @@ def build_message(feed_title, title, summary):
     )
 
 def fetch_first_new(posted_ids):
-    """সব ফিড থেকে প্রথম নতুন আর্টিকেল খুঁজে বের করো (সর্বোচ্চ ১টি)"""
+    """সব ফিড থেকে প্রথম নতুন (আগে পোস্ট হয়নি এমন) আর্টিকেল বের করো"""
     for feed_url in RSS_FEEDS:
         try:
             feed = feedparser.parse(feed_url)
@@ -67,37 +66,20 @@ def send_to_telegram(text):
         "disable_web_page_preview": True
     }).json()
 
-def git_commit_log():
-    try:
-        subprocess.run(["git", "config", "user.name", "GitHub Actions"], check=True)
-        subprocess.run(["git", "config", "user.email", "actions@github.com"], check=True)
-        subprocess.run(["git", "add", LOG_FILE], check=True)
-        diff = subprocess.run(["git", "diff", "--cached", "--quiet"], capture_output=True)
-        if diff.returncode != 0:
-            subprocess.run(["git", "commit", "-m", "Update posted log"], check=True)
-            subprocess.run(["git", "push"], check=True)
-            print("✅ Log committed.")
-        else:
-            print("ℹ️ No change in log.")
-    except Exception as e:
-        print(f"⚠️ Git commit error: {e}")
-
 def main():
-    print("🔍 Checking multiple education feeds (max 1 post)...")
+    print("🔍 Checking RSS feeds...")
     posted = load_posted()
     article_id, msg = fetch_first_new(posted)
-
     if msg:
         res = send_to_telegram(msg)
         if res.get('ok'):
             posted.add(article_id)
-            save_posted(posted)
+            save_posted(posted)  # ক্যাশ ফাইল আপডেট
             print("✅ New article posted:", article_id[:60])
-            git_commit_log()
         else:
             print("❌ Failed to post:", res)
     else:
-        print("ℹ️ No new articles across all feeds. Skipping.")
+        print("ℹ️ No new articles. Skipping.")
 
 if __name__ == "__main__":
     main()
