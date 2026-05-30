@@ -1,16 +1,18 @@
 import os, requests, feedparser, json, re, subprocess
+import google.generativeai as genai
 
 BOT_TOKEN = os.environ['BOT_TOKEN']
 CHANNEL_ID = os.environ['CHANNEL_ID']
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 
-# ========== RSS ফিড লিস্ট ==========
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    model = genai.GenerativeModel('gemini-2.0-flash')
+
 RSS_FEEDS = [
     "https://www.scarleteen.com/rss.xml",
     "https://sexetc.org/feed/",
     "https://www.loveisrespect.org/feed/",
-    "https://www.plannedparenthood.org/rss/news",
-    "https://www.nhs.uk/rss/sexual-health.xml",
-    "https://www.healthline.com/health-news/feed",
 ]
 
 LOG_FILE = "posted_articles.json"
@@ -21,11 +23,7 @@ IMPORTANT_KEYWORDS = [
     "menstruation", "period", "orgasm", "intimacy", "relationship",
     "dating", "love", "breakup", "safe sex", "protection",
     "lgbtq", "gay", "lesbian", "bisexual", "transgender",
-    "harassment", "assault", "abuse", "rape", "trafficking",
-    "health", "wellness", "mental health", "therapy",
-    "body", "anatomy", "reproduction", "hormone",
-    "teen", "adolescent", "young adult", "parent",
-    "education", "guide", "tips", "advice"
+    "health", "wellness", "mental health", "body", "anatomy"
 ]
 
 def load_posted():
@@ -46,14 +44,36 @@ def is_important(text):
     text_lower = text.lower()
     return any(keyword in text_lower for keyword in IMPORTANT_KEYWORDS)
 
-def build_message(feed_name, title, summary):
-    """RSS থেকে সরাসরি বাংলা ফরম্যাটে পোস্ট"""
-    return (
-        f"🔹 <b>{title}</b>\n\n"
-        f"📝 {summary[:350]}...\n\n"
-        f"🌐 <i>Source: {feed_name}</i>\n"
-        f"#SexEducation #IntimacySafety #AdultHealth #শিক্ষা"
-    )
+def generate_bangla_story(title, summary_en, source_name):
+    """Gemini দিয়ে সম্পূর্ণ বাংলা গল্প জেনারেট"""
+    prompt = f"""You are a Bengali sex educator. Write a LONG, story-style educational post COMPLETELY in Bengali language. Not a single English word except medical terms like condom, STI.
+
+Topic: {title}
+Reference: {summary_en[:400]}
+Source: {source_name}
+
+Requirements:
+- Start with the title in Bengali
+- Write in warm, conversational Bengali storytelling style (like a friend explaining)
+- Minimum 400-500 words, maximum 700 words
+- Include:
+  * Realistic scenario or example
+  * Scientific facts explained simply
+  * Practical tips or advice
+  * Emotional aspects
+- End with:
+  * A motivational or thoughtful closing line
+  * Source credit: সূত্র: {source_name}
+  * Hashtags: #SexEducation #IntimacySafety #AdultHealth #শিক্ষা
+- NO markdown, NO links, NO English sentences
+- Pure Bengali characters"""
+    
+    try:
+        response = model.generate_content(prompt)
+        return response.text.strip()
+    except Exception as e:
+        print(f"⚠️ Gemini error: {e}")
+        return None
 
 def fetch_first_important(posted_ids):
     for feed_url in RSS_FEEDS:
@@ -69,8 +89,9 @@ def fetch_first_important(posted_ids):
                 combined = title + " " + summary
                 if is_important(combined):
                     clean_summary = clean_html(summary)
-                    msg = build_message(feed_name, title, clean_summary)
-                    return article_id, msg
+                    bangla_story = generate_bangla_story(title, clean_summary, feed_name)
+                    if bangla_story:
+                        return article_id, bangla_story
         except Exception as e:
             print(f"⚠️ Error parsing {feed_url}: {e}")
     return None, None
@@ -100,7 +121,7 @@ def git_commit_log():
         print(f"⚠️  Git commit error: {e}")
 
 def main():
-    print("🔍 Scanning RSS feeds for important articles...")
+    print("🔍 Scanning RSS feeds for Bangla story generation...")
     posted = load_posted()
     article_id, msg = fetch_first_important(posted)
 
@@ -109,12 +130,12 @@ def main():
         if res.get('ok'):
             posted.add(article_id)
             save_posted(posted)
-            print("✅ Post sent:", article_id[:60])
+            print("✅ Bangla story posted!")
             git_commit_log()
         else:
-            print("❌ Failed to post:", res)
+            print("❌ Failed:", res)
     else:
-        print("ℹ️  No important article found. Skipping.")
+        print("ℹ️  No suitable article found or Gemini quota exceeded.")
 
 if __name__ == "__main__":
     main()
