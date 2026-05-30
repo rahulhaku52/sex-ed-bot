@@ -18,7 +18,7 @@ RSS_FEEDS = [
 LOG_FILE = "posted_articles.json"
 
 IMPORTANT_KEYWORDS = [
-    "sex", "sexual", "consent", "condom", "sti", "std", "hiv",
+    "sex", "sexual", "consent", "How to sex", "what is the appy position in sex", "oral", "how to oral", "condom", "sti", "std", "hiv",
     "pregnancy", "birth control", "contraceptive", "puberty",
     "menstruation", "period", "orgasm", "intimacy", "relationship",
     "dating", "love", "breakup", "safe sex", "protection",
