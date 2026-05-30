@@ -40,7 +40,8 @@ RSS_FEEDS = [
 LOG_FILE = "posted_articles.json"
 
 IMPORTANT_KEYWORDS = [
-    "how to sex"
+    "how to sex", "sexual", "advice", "young adult", 
+    "education", "guide", "tips", "advice"
 ]
 
 BANGLA_PROMPT = """Write a LONG educational post in Bengali language (Bangla). 
