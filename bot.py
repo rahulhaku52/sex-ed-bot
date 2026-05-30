@@ -40,16 +40,7 @@ RSS_FEEDS = [
 LOG_FILE = "posted_articles.json"
 
 IMPORTANT_KEYWORDS = [
-    "sex", "sexual", "consent", "condom", "sti", "std", "hiv",
-    "pregnancy", "birth control", "contraceptive", "puberty",
-    "menstruation", "period", "orgasm", "intimacy", "relationship",
-    "dating", "love", "breakup", "safe sex", "protection",
-    "lgbtq", "gay", "lesbian", "bisexual", "transgender",
-    "harassment", "assault", "abuse", "rape", "trafficking",
-    "health", "wellness", "mental health", "therapy",
-    "body", "anatomy", "reproduction", "hormone",
-    "teen", "adolescent", "young adult", "parent",
-    "education", "guide", "tips", "advice"
+    "how to sex"
 ]
 
 BANGLA_PROMPT = """Write a LONG educational post in Bengali language (Bangla). 
@@ -60,7 +51,7 @@ Source: {source}
 Requirements:
 - Write completely in Bengali (not English)
 - Story-style, engaging, warm conversational tone
-- 400-600 words
+- 400-500 words
 - Include practical tips and scientific facts
 - End with source credit: সূত্র: {source}
 - Hashtags: #SexEducation #IntimacySafety #AdultHealth #শিক্ষা"""
