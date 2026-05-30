@@ -1,9 +1,14 @@
 import os, requests, feedparser, json, re, subprocess
+import google.generativeai as genai
 
 BOT_TOKEN = os.environ['BOT_TOKEN']
 CHANNEL_ID = os.environ['CHANNEL_ID']
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 
-# ========== যৌনশিক্ষা RSS ফিড ==========
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    model = genai.GenerativeModel('gemini-2.0-flash')
+
 RSS_FEEDS = [
     "https://www.scarleteen.com/rss.xml",
     "https://sexetc.org/feed/",
@@ -15,7 +20,6 @@ RSS_FEEDS = [
 
 LOG_FILE = "posted_articles.json"
 
-# ========== গুরুত্বপূর্ণ কীওয়ার্ড ==========
 IMPORTANT_KEYWORDS = [
     "sex", "sexual", "consent", "condom", "sti", "std", "hiv",
     "pregnancy", "birth control", "contraceptive", "puberty",
@@ -44,22 +48,37 @@ def clean_html(raw):
     return re.sub(r'<[^>]+>', '', raw).strip()
 
 def is_important(text):
-    """টাইটেল ও সারাংশে কোনো গুরুত্বপূর্ণ কীওয়ার্ড আছে কিনা চেক"""
     text_lower = text.lower()
     return any(keyword in text_lower for keyword in IMPORTANT_KEYWORDS)
 
-def build_message(feed_name, title, summary):
-    """বাংলা+ইংরেজি মিক্স ফরম্যাট"""
-    return (
-        f"📚 <b>যৌনশিক্ষা ও সম্পর্ক টিপস</b>\n\n"
-        f"🔹 <b>{title}</b>\n\n"
-        f"📝 {summary[:300]}...\n\n"
-        f"🌐 <i>Source: {feed_name}</i>\n"
-        f"#SexEducation #IntimacySafety #AdultHealth #শিক্ষা"
-    )
+def generate_bangla_story(title, summary_en, source_name):
+    """Gemini দিয়ে বাংলায় গল্পের মতো শিক্ষামূলক পোস্ট তৈরি"""
+    prompt = f"""
+You are a professional sex educator writing for a Bengali audience. Write an educational, story-style post in BENGALI language (not English). Use simple, engaging Bengali that feels like a friendly conversation or a short informative story. Include these key elements from the original article:
+
+Article Title: {title}
+Summary: {summary_en[:500]}
+Source: {source_name}
+
+Make the post:
+- Start with the article title as the headline
+- Write in fluent Bengali (not Banglish)
+- Keep it 400-3000 words
+- Include practical tips if relevant
+- End with hashtags: #SexEducation #IntimacySafety #AdultHealth #শিক্ষা
+- Mention "Source: {source_name}" at the end
+- Do NOT include any links
+"""
+    try:
+        response = model.generate_content(prompt)
+        ai_text = response.text.strip()
+        return ai_text
+    except Exception as e:
+        print(f"⚠️ Gemini error: {e}")
+        return None
 
 def fetch_first_important(posted_ids):
-    """সব ফিড থেকে প্রথম গুরুত্বপূর্ণ আর্টিকেল (সর্বোচ্চ ১টা)"""
+    """RSS থেকে প্রথম গুরুত্বপূর্ণ আর্টিকেল খুঁজে Gemini দিয়ে বাংলা পোস্ট বানাও"""
     for feed_url in RSS_FEEDS:
         try:
             feed = feedparser.parse(feed_url)
@@ -73,8 +92,10 @@ def fetch_first_important(posted_ids):
                 combined = title + " " + summary
                 if is_important(combined):
                     clean_summary = clean_html(summary)
-                    msg = build_message(feed_name, title, clean_summary)
-                    return article_id, msg
+                    # Gemini দিয়ে বাংলা পোস্ট তৈরি করো
+                    bangla_post = generate_bangla_story(title, clean_summary, feed_name)
+                    if bangla_post:
+                        return article_id, bangla_post
         except Exception as e:
             print(f"⚠️ Error parsing {feed_url}: {e}")
     return None, None
@@ -104,7 +125,7 @@ def git_commit_log():
         print(f"⚠️  Git commit error: {e}")
 
 def main():
-    print("🔍 Scanning for important sex education news (max 1 post)...")
+    print("🔍 Scanning RSS feeds for important articles...")
     posted = load_posted()
     article_id, msg = fetch_first_important(posted)
 
@@ -113,7 +134,7 @@ def main():
         if res.get('ok'):
             posted.add(article_id)
             save_posted(posted)
-            print("✅ Important post sent:", article_id[:60])
+            print("✅ Bangla post sent:", article_id[:60])
             git_commit_log()
         else:
             print("❌ Failed to post:", res)
