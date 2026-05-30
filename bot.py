@@ -1,32 +1,14 @@
 import os, requests, feedparser, json, re, subprocess
+from openai import OpenAI
 
 BOT_TOKEN = os.environ['BOT_TOKEN']
 CHANNEL_ID = os.environ['CHANNEL_ID']
-
-# ========== API Keys ==========
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 DEEPSEEK_API_KEY = os.environ.get('DEEPSEEK_API_KEY')
-GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 
-# ========== API Clients ==========
-# Gemini
-gemini_model = None
-if GEMINI_API_KEY:
-    import google.generativeai as genai
-    genai.configure(api_key=GEMINI_API_KEY)
-    gemini_model = genai.GenerativeModel('gemini-2.0-flash')
+if not DEEPSEEK_API_KEY:
+    raise Exception("DEEPSEEK_API_KEY not set!")
 
-# DeepSeek
-deepseek_client = None
-if DEEPSEEK_API_KEY:
-    from openai import OpenAI
-    deepseek_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
-
-# Groq
-groq_client = None
-if GROQ_API_KEY:
-    from groq import Groq
-    groq_client = Groq(api_key=GROQ_API_KEY)
+deepseek_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
 RSS_FEEDS = [
     "https://www.scarleteen.com/rss.xml",
@@ -40,22 +22,17 @@ RSS_FEEDS = [
 LOG_FILE = "posted_articles.json"
 
 IMPORTANT_KEYWORDS = [
-    "how to sex", "sexual", "advice", "young adult", 
+    "sex", "sexual", "consent", "condom", "sti", "std", "hiv",
+    "pregnancy", "birth control", "contraceptive", "puberty",
+    "menstruation", "period", "orgasm", "intimacy", "relationship",
+    "dating", "love", "breakup", "safe sex", "protection",
+    "lgbtq", "gay", "lesbian", "bisexual", "transgender",
+    "harassment", "assault", "abuse", "rape", "trafficking",
+    "health", "wellness", "mental health", "therapy",
+    "body", "anatomy", "reproduction", "hormone",
+    "teen", "adolescent", "young adult", "parent",
     "education", "guide", "tips", "advice"
 ]
-
-BANGLA_PROMPT = """Write a LONG educational post in Bengali language (Bangla). 
-Topic: {title}
-Reference: {summary}
-Source: {source}
-
-Requirements:
-- Write completely in Bengali (not English)
-- Story-style, engaging, warm conversational tone
-- 400-500 words
-- Include practical tips and scientific facts
-- End with source credit: সূত্র: {source}
-- Hashtags: #SexEducation #IntimacySafety #AdultHealth #শিক্ষা"""
 
 def load_posted():
     try:
@@ -75,74 +52,41 @@ def is_important(text):
     text_lower = text.lower()
     return any(keyword in text_lower for keyword in IMPORTANT_KEYWORDS)
 
-def try_deepseek(prompt):
-    if not deepseek_client:
-        return None
+def generate_bangla_story(title, summary_en, source_name):
+    """DeepSeek দিয়ে নিখুঁত বাংলা গল্প"""
+    prompt = f"""You are a native Bengali sex educator. Write a COMPLETE, long educational story-style post in PURE BENGALI language. 
+
+Topic: {title}
+Reference info: {summary_en[:400]}
+Source: {source_name}
+
+STRICT RULES:
+- Write 100% in Bengali. No English words except unavoidable medical terms (condom, STI, HIV).
+- DO NOT use "হ্যালো", "বাই", "গাইজ", or any direct translation from English.
+- Start naturally with the topic, like a friend telling a story. For example: "কনডম ব্যবহার নিয়ে আমাদের সমাজে অনেক ভুল ধারণা আছে। আজ আমি তোমাকে একটা গল্প বলি..."
+- Length: minimum 400 words, complete the story properly with a conclusion.
+- Include: a relatable scenario, scientific facts, practical tips, emotional aspects.
+- End with: "সূত্র: {source_name}" and hashtags: #SexEducation #IntimacySafety #AdultHealth #শিক্ষা
+- Do NOT cut off mid-sentence. Finish the entire thought.
+"""
     try:
         response = deepseek_client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.8,
-            max_tokens=1500
+            temperature=0.7,
+            max_tokens=2500  # লম্বা আউটপুটের জন্য বাড়ানো হয়েছে
         )
-        return response.choices[0].message.content.strip()
+        text = response.choices[0].message.content.strip()
+        # যদি কোনো কারণে কাটা পড়ে, তবে শেষ বাক্যটি সম্পূর্ণ আছে কিনা চেক (বেসিক)
+        if not text.endswith(('.', '।', '?', '!', ')')):
+            text += '।'  # শেষে দাঁড়ি যোগ
+        return text
     except Exception as e:
-        print(f"  ❌ DeepSeek error: {e}")
+        print(f"❌ DeepSeek error: {e}")
         return None
-
-def try_gemini(prompt):
-    if not gemini_model:
-        return None
-    try:
-        response = gemini_model.generate_content(prompt)
-        return response.text.strip()
-    except Exception as e:
-        print(f"  ❌ Gemini error: {e}")
-        return None
-
-def try_groq(prompt):
-    if not groq_client:
-        return None
-    try:
-        response = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.8,
-            max_tokens=1500
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        print(f"  ❌ Groq error: {e}")
-        return None
-
-def generate_bangla_story(title, summary_en, source_name):
-    prompt = BANGLA_PROMPT.format(title=title, summary=summary_en[:400], source=source_name)
-    
-    # ১. DeepSeek (সবচেয়ে নির্ভরযোগ্য ফ্রি)
-    print("  🟡 Trying DeepSeek...")
-    result = try_deepseek(prompt)
-    if result:
-        print("  ✅ DeepSeek success!")
-        return result
-    
-    # ২. Gemini
-    print("  🟡 Trying Gemini...")
-    result = try_gemini(prompt)
-    if result:
-        print("  ✅ Gemini success!")
-        return result
-    
-    # ৩. Groq
-    print("  🟡 Trying Groq...")
-    result = try_groq(prompt)
-    if result:
-        print("  ✅ Groq success!")
-        return result
-    
-    print("  ❌ All APIs failed!")
-    return None
 
 def build_rss_fallback(feed_name, title, summary):
+    """DeepSeek ব্যর্থ হলে RSS সরাসরি"""
     return (
         f"🔹 <b>{title}</b>\n\n"
         f"📝 {summary[:350]}...\n\n"
@@ -164,11 +108,12 @@ def fetch_first_important(posted_ids):
                 combined = title + " " + summary
                 if is_important(combined):
                     clean_summary = clean_html(summary)
-                    bangla_story = generate_bangla_story(title, clean_summary, feed_name)
-                    if bangla_story:
-                        return article_id, bangla_story
-                    msg = build_rss_fallback(feed_name, title, clean_summary)
-                    return article_id, msg
+                    # প্রথমে বাংলা গল্প জেনারেট
+                    story = generate_bangla_story(title, clean_summary, feed_name)
+                    if story:
+                        return article_id, story
+                    # ব্যর্থ হলে RSS ফরম্যাট
+                    return article_id, build_rss_fallback(feed_name, title, clean_summary)
         except Exception as e:
             print(f"⚠️ Error parsing {feed_url}: {e}")
     return None, None
