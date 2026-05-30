@@ -1,9 +1,9 @@
-import os, requests, feedparser, json, re, subprocess, time
+import os, requests, feedparser, json, re, subprocess
 
 BOT_TOKEN = os.environ['BOT_TOKEN']
 CHANNEL_ID = os.environ['CHANNEL_ID']
 
-# ========== RSS ফিড লিস্ট ==========
+# ========== যৌনশিক্ষা RSS ফিড ==========
 RSS_FEEDS = [
     "https://www.scarleteen.com/rss.xml",
     "https://sexetc.org/feed/",
@@ -15,16 +15,18 @@ RSS_FEEDS = [
 
 LOG_FILE = "posted_articles.json"
 
-# ========== গুরুত্বপূর্ণ কীওয়ার্ড (এগুলো থাকলেই কেবল পোস্ট হবে) ==========
+# ========== গুরুত্বপূর্ণ কীওয়ার্ড ==========
 IMPORTANT_KEYWORDS = [
-    "gold", "xauusd", "xau", "silver",
-    "crude oil", "wti", "brent", "oil price",
-    "bitcoin", "btc", "ethereum", "eth", "crypto",
-    "fed", "federal reserve", "ecb", "central bank",
-    "interest rate", "inflation", "cpi", "gdp",
-    "market crash", "rally", "bull", "bear",
-    "stock", "dow", "s&p", "nasdaq",
-    "geopolitical", "war", "sanction"
+    "sex", "sexual", "consent", "condom", "sti", "std", "hiv",
+    "pregnancy", "birth control", "contraceptive", "puberty",
+    "menstruation", "period", "orgasm", "intimacy", "relationship",
+    "dating", "love", "breakup", "safe sex", "protection",
+    "lgbtq", "gay", "lesbian", "bisexual", "transgender",
+    "harassment", "assault", "abuse", "rape", "trafficking",
+    "health", "wellness", "mental health", "therapy",
+    "body", "anatomy", "reproduction", "hormone",
+    "teen", "adolescent", "young adult", "parent",
+    "education", "guide", "tips", "advice"
 ]
 
 def load_posted():
@@ -47,29 +49,17 @@ def is_important(text):
     return any(keyword in text_lower for keyword in IMPORTANT_KEYWORDS)
 
 def build_message(feed_name, title, summary):
-    if "gold" in feed_name.lower():
-        header = "📰 Gold Market Update"
-        tags = "#XAUUSD #GoldNews"
-    elif "cryptocurrency" in feed_name.lower() or "coindesk" in feed_name.lower():
-        header = "₿ Crypto Update"
-        tags = "#Crypto #Bitcoin"
-    elif "crude_oil" in feed_name.lower():
-        header = "🛢 Crude Oil Update"
-        tags = "#Oil #WTI"
-    else:
-        header = "📊 Market News"
-        tags = "#MarketNews #Forex"
-
+    """বাংলা+ইংরেজি মিক্স ফরম্যাট"""
     return (
-        f"{header}\n\n"
+        f"📚 <b>যৌনশিক্ষা ও সম্পর্ক টিপস</b>\n\n"
         f"🔹 <b>{title}</b>\n\n"
         f"📝 {summary[:300]}...\n\n"
-        f"<i>Source: {feed_name}</i>\n"
-        f"{tags}"
+        f"🌐 <i>Source: {feed_name}</i>\n"
+        f"#SexEducation #IntimacySafety #AdultHealth #শিক্ষা"
     )
 
 def fetch_first_important(posted_ids):
-    """সব ফিড থেকে প্রথম গুরুত্বপূর্ণ নিউজটা খুঁজে বের করবে (সর্বোচ্চ ১টা)"""
+    """সব ফিড থেকে প্রথম গুরুত্বপূর্ণ আর্টিকেল (সর্বোচ্চ ১টা)"""
     for feed_url in RSS_FEEDS:
         try:
             feed = feedparser.parse(feed_url)
@@ -114,7 +104,7 @@ def git_commit_log():
         print(f"⚠️  Git commit error: {e}")
 
 def main():
-    print("🔍 Scanning for important news (max 1 post)...")
+    print("🔍 Scanning for important sex education news (max 1 post)...")
     posted = load_posted()
     article_id, msg = fetch_first_important(posted)
 
@@ -123,12 +113,12 @@ def main():
         if res.get('ok'):
             posted.add(article_id)
             save_posted(posted)
-            print("✅ Important news posted:", article_id[:60])
+            print("✅ Important post sent:", article_id[:60])
             git_commit_log()
         else:
             print("❌ Failed to post:", res)
     else:
-        print("ℹ️  No important news found. Skipping.")
+        print("ℹ️  No important article found. Skipping.")
 
 if __name__ == "__main__":
     main()
