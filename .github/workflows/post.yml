@@ -2,7 +2,7 @@ name: Sex Ed Auto Poster
 
 on:
   schedule:
-    - cron: '*/30 * * * *'   # প্রতি ১ ঘণ্টায় (দিনে ২৪ বার) – একটিমাত্র পোস্ট হবে
+    - cron: '*/30 * * * *'   # প্রতি ৩০ মিনিট
   workflow_dispatch:
 
 jobs:
@@ -10,15 +10,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # ক্যাশ থেকে posted_cache.json ফাইলটি লোড করো (যদি থাকে)
+      - name: Restore posted cache
+        uses: actions/cache@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          path: posted_cache.json
+          key: posted-cache-${{ github.run_id }}
+          restore-keys: |
+            posted-cache-
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+
       - run: pip install requests feedparser
+
       - name: Run poster
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
         run: python bot.py
+
+      # কাজ শেষে আপডেটেড ক্যাশ সংরক্ষণ করো
+      - name: Save updated cache
+        if: always()
+        uses: actions/cache@v4
+        with:
+          path: posted_cache.json
+          key: posted-cache-${{ github.run_id }}
   
