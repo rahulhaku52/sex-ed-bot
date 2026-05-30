@@ -17,14 +17,11 @@ jobs:
         with:
           python-version: '3.10'
 
-      - run: pip install requests feedparser openai groq mistralai google-generativeai
+      - run: pip install requests feedparser openai
 
       - name: Run poster
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
         run: python bot.py
