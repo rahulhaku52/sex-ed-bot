@@ -1,30 +1,75 @@
 import os, requests, feedparser, json, re, subprocess
-import google.generativeai as genai
 
 BOT_TOKEN = os.environ['BOT_TOKEN']
 CHANNEL_ID = os.environ['CHANNEL_ID']
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 
+# ========== API Keys ==========
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+DEEPSEEK_API_KEY = os.environ.get('DEEPSEEK_API_KEY')
+GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
+MISTRAL_API_KEY = os.environ.get('MISTRAL_API_KEY')
+
+# ========== API Clients Initialize ==========
+# Gemini
 if GEMINI_API_KEY:
+    import google.generativeai as genai
     genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-2.0-flash')
+    gemini_model = genai.GenerativeModel('gemini-2.0-flash')
+
+# DeepSeek
+deepseek_client = None
+if DEEPSEEK_API_KEY:
+    from openai import OpenAI
+    deepseek_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+
+# Groq
+groq_client = None
+if GROQ_API_KEY:
+    from groq import Groq
+    groq_client = Groq(api_key=GROQ_API_KEY)
+
+# Mistral
+mistral_client = None
+if MISTRAL_API_KEY:
+    from mistralai import Mistral
+    mistral_client = Mistral(api_key=MISTRAL_API_KEY)
 
 RSS_FEEDS = [
     "https://www.scarleteen.com/rss.xml",
     "https://sexetc.org/feed/",
     "https://www.loveisrespect.org/feed/",
+    "https://www.plannedparenthood.org/rss/news",
+    "https://www.nhs.uk/rss/sexual-health.xml",
+    "https://www.healthline.com/health-news/feed",
 ]
 
 LOG_FILE = "posted_articles.json"
 
 IMPORTANT_KEYWORDS = [
-    "sex", "sexual", "consent", "How to sex", "what is the appy position in sex", "oral", "how to oral", "condom", "sti", "std", "hiv",
+    "sex", "sexual", "consent", "condom", "sti", "std", "hiv",
     "pregnancy", "birth control", "contraceptive", "puberty",
     "menstruation", "period", "orgasm", "intimacy", "relationship",
     "dating", "love", "breakup", "safe sex", "protection",
     "lgbtq", "gay", "lesbian", "bisexual", "transgender",
-    "health", "wellness", "mental health", "body", "anatomy"
+    "harassment", "assault", "abuse", "rape", "trafficking",
+    "health", "wellness", "mental health", "therapy",
+    "body", "anatomy", "reproduction", "hormone",
+    "teen", "adolescent", "young adult", "parent",
+    "education", "guide", "tips", "advice"
 ]
+
+BANGLA_PROMPT = """Write a LONG educational post in Bengali language (Bangla). 
+Topic: {title}
+Reference: {summary}
+Source: {source}
+
+Requirements:
+- Write completely in Bengali (not English)
+- Story-style, engaging, warm conversational tone
+- 400-600 words
+- Include practical tips and scientific facts
+- End with source credit: সূত্র: {source}
+- Hashtags: #SexEducation #IntimacySafety #AdultHealth #শিক্ষা"""
 
 def load_posted():
     try:
@@ -44,36 +89,104 @@ def is_important(text):
     text_lower = text.lower()
     return any(keyword in text_lower for keyword in IMPORTANT_KEYWORDS)
 
-def generate_bangla_story(title, summary_en, source_name):
-    """Gemini দিয়ে সম্পূর্ণ বাংলা গল্প জেনারেট"""
-    prompt = f"""You are a Bengali sex educator. Write a LONG, story-style educational post COMPLETELY in Bengali language. Not a single English word except medical terms like condom, STI.
-
-Topic: {title}
-Reference: {summary_en[:400]}
-Source: {source_name}
-
-Requirements:
-- Start with the title in Bengali
-- Write in warm, conversational Bengali storytelling style (like a friend explaining)
-- Minimum 400-500 words, maximum 700 words
-- Include:
-  * Realistic scenario or example
-  * Scientific facts explained simply
-  * Practical tips or advice
-  * Emotional aspects
-- End with:
-  * A motivational or thoughtful closing line
-  * Source credit: সূত্র: {source_name}
-  * Hashtags: #SexEducation #IntimacySafety #AdultHealth #শিক্ষা
-- NO markdown, NO links, NO English sentences
-- Pure Bengali characters"""
-    
-    try:
-        response = model.generate_content(prompt)
-        return response.text.strip()
-    except Exception as e:
-        print(f"⚠️ Gemini error: {e}")
+def try_gemini(prompt):
+    """Gemini API চেষ্টা"""
+    if not GEMINI_API_KEY:
         return None
+    try:
+        response = gemini_model.generate_content(prompt)
+        return response.text.strip()
+    except:
+        return None
+
+def try_deepseek(prompt):
+    """DeepSeek API চেষ্টা"""
+    if not deepseek_client:
+        return None
+    try:
+        response = deepseek_client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.8,
+            max_tokens=1500
+        )
+        return response.choices[0].message.content.strip()
+    except:
+        return None
+
+def try_groq(prompt):
+    """Groq API চেষ্টা"""
+    if not groq_client:
+        return None
+    try:
+        response = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.8,
+            max_tokens=1500
+        )
+        return response.choices[0].message.content.strip()
+    except:
+        return None
+
+def try_mistral(prompt):
+    """Mistral API চেষ্টা"""
+    if not mistral_client:
+        return None
+    try:
+        response = mistral_client.chat.complete(
+            model="mistral-small-latest",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.8,
+            max_tokens=1500
+        )
+        return response.choices[0].message.content.strip()
+    except:
+        return None
+
+def generate_bangla_story(title, summary_en, source_name):
+    """সব API ট্রাই করো, প্রথমে যে কাজ করবে সেটাই ব্যবহার করো"""
+    prompt = BANGLA_PROMPT.format(title=title, summary=summary_en[:400], source=source_name)
+    
+    # ১. DeepSeek (সেরা ফ্রি)
+    print("  🟡 Trying DeepSeek...")
+    result = try_deepseek(prompt)
+    if result:
+        print("  ✅ DeepSeek success!")
+        return result
+    
+    # ২. Gemini
+    print("  🟡 Trying Gemini...")
+    result = try_gemini(prompt)
+    if result:
+        print("  ✅ Gemini success!")
+        return result
+    
+    # ৩. Groq
+    print("  🟡 Trying Groq...")
+    result = try_groq(prompt)
+    if result:
+        print("  ✅ Groq success!")
+        return result
+    
+    # ৪. Mistral
+    print("  🟡 Trying Mistral...")
+    result = try_mistral(prompt)
+    if result:
+        print("  ✅ Mistral success!")
+        return result
+    
+    print("  ❌ All APIs failed!")
+    return None
+
+def build_rss_fallback(feed_name, title, summary):
+    """সব API ব্যর্থ হলে RSS সরাসরি"""
+    return (
+        f"🔹 <b>{title}</b>\n\n"
+        f"📝 {summary[:350]}...\n\n"
+        f"🌐 <i>Source: {feed_name}</i>\n"
+        f"#SexEducation #IntimacySafety #AdultHealth #শিক্ষা"
+    )
 
 def fetch_first_important(posted_ids):
     for feed_url in RSS_FEEDS:
@@ -89,9 +202,15 @@ def fetch_first_important(posted_ids):
                 combined = title + " " + summary
                 if is_important(combined):
                     clean_summary = clean_html(summary)
+                    
+                    # প্রথমে AI দিয়ে বাংলা গল্প বানানোর চেষ্টা
                     bangla_story = generate_bangla_story(title, clean_summary, feed_name)
                     if bangla_story:
                         return article_id, bangla_story
+                    
+                    # AI ব্যর্থ হলে RSS ফরম্যাট
+                    msg = build_rss_fallback(feed_name, title, clean_summary)
+                    return article_id, msg
         except Exception as e:
             print(f"⚠️ Error parsing {feed_url}: {e}")
     return None, None
@@ -130,12 +249,12 @@ def main():
         if res.get('ok'):
             posted.add(article_id)
             save_posted(posted)
-            print("✅ Bangla story posted!")
+            print("✅ Post sent!")
             git_commit_log()
         else:
             print("❌ Failed:", res)
     else:
-        print("ℹ️  No suitable article found or Gemini quota exceeded.")
+        print("ℹ️  No important article found.")
 
 if __name__ == "__main__":
     main()
