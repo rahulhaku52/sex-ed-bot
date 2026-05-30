@@ -8,7 +8,7 @@ DEEPSEEK_API_KEY = os.environ.get('DEEPSEEK_API_KEY')
 if not DEEPSEEK_API_KEY:
     raise Exception("DEEPSEEK_API_KEY not set!")
 
-deepseek_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+deepseek = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
 RSS_FEEDS = [
     "https://www.scarleteen.com/rss.xml",
@@ -20,19 +20,6 @@ RSS_FEEDS = [
 ]
 
 LOG_FILE = "posted_articles.json"
-
-IMPORTANT_KEYWORDS = [
-    "sex", "sexual", "consent", "condom", "sti", "std", "hiv",
-    "pregnancy", "birth control", "contraceptive", "puberty",
-    "menstruation", "period", "orgasm", "intimacy", "relationship",
-    "dating", "love", "breakup", "safe sex", "protection",
-    "lgbtq", "gay", "lesbian", "bisexual", "transgender",
-    "harassment", "assault", "abuse", "rape", "trafficking",
-    "health", "wellness", "mental health", "therapy",
-    "body", "anatomy", "reproduction", "hormone",
-    "teen", "adolescent", "young adult", "parent",
-    "education", "guide", "tips", "advice"
-]
 
 def load_posted():
     try:
@@ -48,53 +35,41 @@ def save_posted(posted):
 def clean_html(raw):
     return re.sub(r'<[^>]+>', '', raw).strip()
 
-def is_important(text):
-    text_lower = text.lower()
-    return any(keyword in text_lower for keyword in IMPORTANT_KEYWORDS)
+def generate_bangla_post(topic_title, topic_summary, source_name):
+    """DeepSeek দিয়ে সম্পূর্ণ বাংলা পোস্ট তৈরি"""
+    prompt = f"""তুমি একজন যৌনশিক্ষা বিশেষজ্ঞ। নিচের টপিক নিয়ে বাংলায় একটি সুন্দর, সহজ, এবং সম্পূর্ণ শিক্ষামূলক পোস্ট লিখো।
 
-def generate_bangla_story(title, summary_en, source_name):
-    """DeepSeek দিয়ে নিখুঁত বাংলা গল্প"""
-    prompt = f"""You are a native Bengali sex educator. Write a COMPLETE, long educational story-style post in PURE BENGALI language. 
+টপিক: {topic_title}
+সংক্ষিপ্ত তথ্য: {topic_summary[:500]}
+উৎস: {source_name}
 
-Topic: {title}
-Reference info: {summary_en[:400]}
-Source: {source_name}
+গুরুত্বপূর্ণ নিয়ম:
+- সম্পূর্ণ বাংলায় লিখবে, কোনো ইংরেজি শব্দ নয় (শুধু কনডম, STI, HIV-র মতো চিকিৎসা শব্দ ছাড়া)।
+- লেখার ধরন হবে গল্পের মতো, বন্ধুর সাথে কথা বলার মতো, যেন পড়তে ভালো লাগে।
+- শুরু করবে সরাসরি টপিক দিয়ে, কোনো "হ্যালো", "বাই", "গাইজ" নয়।
+- পোস্ট সম্পূর্ণ করবে, শেষ বাক্যটি শেষ না করে থামবে না।
+- শেষে দেবে: সূত্র: {source_name}
+- হ্যাশট্যাগ: #SexEducation #IntimacySafety #AdultHealth #শিক্ষা
+- ন্যূনতম ৩০০ শব্দ লিখবে।"""
 
-STRICT RULES:
-- Write 100% in Bengali. No English words except unavoidable medical terms (condom, STI, HIV).
-- DO NOT use "হ্যালো", "বাই", "গাইজ", or any direct translation from English.
-- Start naturally with the topic, like a friend telling a story. For example: "কনডম ব্যবহার নিয়ে আমাদের সমাজে অনেক ভুল ধারণা আছে। আজ আমি তোমাকে একটা গল্প বলি..."
-- Length: minimum 400 words, complete the story properly with a conclusion.
-- Include: a relatable scenario, scientific facts, practical tips, emotional aspects.
-- End with: "সূত্র: {source_name}" and hashtags: #SexEducation #IntimacySafety #AdultHealth #শিক্ষা
-- Do NOT cut off mid-sentence. Finish the entire thought.
-"""
     try:
-        response = deepseek_client.chat.completions.create(
+        response = deepseek.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
-            max_tokens=2500  # লম্বা আউটপুটের জন্য বাড়ানো হয়েছে
+            max_tokens=2500
         )
         text = response.choices[0].message.content.strip()
-        # যদি কোনো কারণে কাটা পড়ে, তবে শেষ বাক্যটি সম্পূর্ণ আছে কিনা চেক (বেসিক)
-        if not text.endswith(('.', '।', '?', '!', ')')):
-            text += '।'  # শেষে দাঁড়ি যোগ
+        # শেষে দাঁড়ি না থাকলে যোগ করে দিচ্ছি
+        if not text.endswith(('.', '।', '?', '!')):
+            text += '।'
         return text
     except Exception as e:
         print(f"❌ DeepSeek error: {e}")
         return None
 
-def build_rss_fallback(feed_name, title, summary):
-    """DeepSeek ব্যর্থ হলে RSS সরাসরি"""
-    return (
-        f"🔹 <b>{title}</b>\n\n"
-        f"📝 {summary[:350]}...\n\n"
-        f"🌐 <i>Source: {feed_name}</i>\n"
-        f"#SexEducation #IntimacySafety #AdultHealth #শিক্ষা"
-    )
-
-def fetch_first_important(posted_ids):
+def fetch_first_topic(posted_ids):
+    """RSS থেকে প্রথম নতুন গুরুত্বপূর্ণ টপিক খুঁজে আনে"""
     for feed_url in RSS_FEEDS:
         try:
             feed = feedparser.parse(feed_url)
@@ -105,18 +80,13 @@ def fetch_first_important(posted_ids):
                     continue
                 title = entry.title
                 summary = entry.summary if hasattr(entry, 'summary') else ""
-                combined = title + " " + summary
-                if is_important(combined):
+                # টপিক আছে? তাহলে নাও
+                if title and summary:
                     clean_summary = clean_html(summary)
-                    # প্রথমে বাংলা গল্প জেনারেট
-                    story = generate_bangla_story(title, clean_summary, feed_name)
-                    if story:
-                        return article_id, story
-                    # ব্যর্থ হলে RSS ফরম্যাট
-                    return article_id, build_rss_fallback(feed_name, title, clean_summary)
+                    return article_id, title, clean_summary, feed_name
         except Exception as e:
             print(f"⚠️ Error parsing {feed_url}: {e}")
-    return None, None
+    return None, None, None, None
 
 def send_to_telegram(text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -127,37 +97,42 @@ def send_to_telegram(text):
         "disable_web_page_preview": True
     }).json()
 
-def git_commit_log():
+def git_commit():
     try:
         subprocess.run(["git", "config", "user.name", "GitHub Actions"], check=True)
         subprocess.run(["git", "config", "user.email", "actions@github.com"], check=True)
         subprocess.run(["git", "add", LOG_FILE], check=True)
         diff = subprocess.run(["git", "diff", "--cached", "--quiet"], capture_output=True)
         if diff.returncode != 0:
-            subprocess.run(["git", "commit", "-m", "Update posted log"], check=True)
+            subprocess.run(["git", "commit", "-m", "Update log"], check=True)
             subprocess.run(["git", "push"], check=True)
             print("✅ Log committed.")
         else:
             print("ℹ️  No change in log.")
     except Exception as e:
-        print(f"⚠️  Git commit error: {e}")
+        print(f"⚠️  Git error: {e}")
 
 def main():
-    print("🔍 Scanning RSS feeds...")
+    print("🔍 Fetching topic from RSS...")
     posted = load_posted()
-    article_id, msg = fetch_first_important(posted)
+    article_id, title, summary, source = fetch_first_topic(posted)
 
-    if msg:
-        res = send_to_telegram(msg)
-        if res.get('ok'):
-            posted.add(article_id)
-            save_posted(posted)
-            print("✅ Post sent!")
-            git_commit_log()
+    if title:
+        print(f"📝 Topic: {title}")
+        post = generate_bangla_post(title, summary, source)
+        if post:
+            res = send_to_telegram(post)
+            if res.get('ok'):
+                posted.add(article_id)
+                save_posted(posted)
+                git_commit()
+                print("✅ Bangla post sent!")
+            else:
+                print("❌ Telegram error:", res)
         else:
-            print("❌ Failed:", res)
+            print("❌ Failed to generate post.")
     else:
-        print("ℹ️  No important article found.")
+        print("ℹ️  No new topic found.")
 
 if __name__ == "__main__":
     main()
