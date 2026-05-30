@@ -2,8 +2,11 @@ name: Sex Ed Auto Poster
 
 on:
   schedule:
-    - cron: '0 */2 * * *'   # প্রতি ২ ঘণ্টায়
+    - cron: '0 */2 * * *'   # প্রতি ২ ঘণ্টায় (আপনি চাইলে বাড়াতে/কমাতে পারেন)
   workflow_dispatch:
+
+permissions:
+  contents: write            # গিট পুশের জন্য আবশ্যক
 
 jobs:
   post:
@@ -19,7 +22,7 @@ jobs:
 
       - run: pip install requests
 
-      - name: Run
+      - name: Run poster
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
