@@ -1,13 +1,19 @@
 import os, requests, feedparser, json, re, subprocess
-import google.generativeai as genai
 
 BOT_TOKEN = os.environ['BOT_TOKEN']
 CHANNEL_ID = os.environ['CHANNEL_ID']
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-2.0-flash')
+# ========== RSS ফিড লিস্ট ==========
+RSS_FEEDS = [
+    "https://www.scarleteen.com/rss.xml",
+    "https://sexetc.org/feed/",
+    "https://www.loveisrespect.org/feed/",
+    "https://www.plannedparenthood.org/rss/news",
+    "https://www.nhs.uk/rss/sexual-health.xml",
+    "https://www.healthline.com/health-news/feed",
+]
+
+LOG_FILE = "posted_articles.json"
 
 IMPORTANT_KEYWORDS = [
     "sex", "sexual", "consent", "condom", "sti", "std", "hiv",
@@ -15,7 +21,11 @@ IMPORTANT_KEYWORDS = [
     "menstruation", "period", "orgasm", "intimacy", "relationship",
     "dating", "love", "breakup", "safe sex", "protection",
     "lgbtq", "gay", "lesbian", "bisexual", "transgender",
-    "health", "wellness", "mental health", "body", "anatomy"
+    "harassment", "assault", "abuse", "rape", "trafficking",
+    "health", "wellness", "mental health", "therapy",
+    "body", "anatomy", "reproduction", "hormone",
+    "teen", "adolescent", "young adult", "parent",
+    "education", "guide", "tips", "advice"
 ]
 
 def load_posted():
@@ -36,31 +46,8 @@ def is_important(text):
     text_lower = text.lower()
     return any(keyword in text_lower for keyword in IMPORTANT_KEYWORDS)
 
-def generate_bangla_post(title, summary_en, source_name):
-    """Gemini দিয়ে বাংলা পোস্ট বানানোর চেষ্টা, ব্যর্থ হলে সরাসরি RSS ব্যবহার"""
-    if not GEMINI_API_KEY:
-        return None
-    
-    prompt = f"""Write an educational post in Bengali language (Bangla) about:
-Title: {title}
-Summary: {summary_en[:400]}
-Source: {source_name}
-
-Make it:
-- Story-style, engaging, 400-3050 words
-- Pure Bengali (not Banglish)
-- Add hashtags: #SexEducation #IntimacySafety #AdultHealth #শিক্ষা
-- No links"""
-    
-    try:
-        response = model.generate_content(prompt)
-        return response.text.strip()
-    except Exception as e:
-        print(f"⚠️ Gemini error: {e}")
-        return None
-
-def build_rss_message(feed_name, title, summary):
-    """Gemini ব্যর্থ হলে RSS থেকে সরাসরি বাংলা ফরম্যাটে"""
+def build_message(feed_name, title, summary):
+    """RSS থেকে সরাসরি বাংলা ফরম্যাটে পোস্ট"""
     return (
         f"🔹 <b>{title}</b>\n\n"
         f"📝 {summary[:350]}...\n\n"
@@ -82,15 +69,8 @@ def fetch_first_important(posted_ids):
                 combined = title + " " + summary
                 if is_important(combined):
                     clean_summary = clean_html(summary)
-                    
-                    # প্রথমে Gemini দিয়ে বাংলা পোস্ট বানানোর চেষ্টা
-                    bangla_post = generate_bangla_post(title, clean_summary, feed_name)
-                    if bangla_post:
-                        return article_id, bangla_post
-                    else:
-                        # Gemini ব্যর্থ হলে RSS ফরম্যাটে পাঠাও
-                        msg = build_rss_message(feed_name, title, clean_summary)
-                        return article_id, msg
+                    msg = build_message(feed_name, title, clean_summary)
+                    return article_id, msg
         except Exception as e:
             print(f"⚠️ Error parsing {feed_url}: {e}")
     return None, None
@@ -120,7 +100,7 @@ def git_commit_log():
         print(f"⚠️  Git commit error: {e}")
 
 def main():
-    print("🔍 Scanning RSS feeds...")
+    print("🔍 Scanning RSS feeds for important articles...")
     posted = load_posted()
     article_id, msg = fetch_first_important(posted)
 
@@ -129,12 +109,12 @@ def main():
         if res.get('ok'):
             posted.add(article_id)
             save_posted(posted)
-            print("✅ Post sent!")
+            print("✅ Post sent:", article_id[:60])
             git_commit_log()
         else:
-            print("❌ Failed:", res)
+            print("❌ Failed to post:", res)
     else:
-        print("ℹ️  No important article found.")
+        print("ℹ️  No important article found. Skipping.")
 
 if __name__ == "__main__":
     main()
