@@ -7,30 +7,26 @@ CHANNEL_ID = os.environ['CHANNEL_ID']
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 DEEPSEEK_API_KEY = os.environ.get('DEEPSEEK_API_KEY')
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
-MISTRAL_API_KEY = os.environ.get('MISTRAL_API_KEY')
 
 # ========== API Clients ==========
+# Gemini
 gemini_model = None
 if GEMINI_API_KEY:
     import google.generativeai as genai
     genai.configure(api_key=GEMINI_API_KEY)
     gemini_model = genai.GenerativeModel('gemini-2.0-flash')
 
+# DeepSeek
 deepseek_client = None
 if DEEPSEEK_API_KEY:
     from openai import OpenAI
     deepseek_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
+# Groq
 groq_client = None
 if GROQ_API_KEY:
     from groq import Groq
     groq_client = Groq(api_key=GROQ_API_KEY)
-
-mistral_client = None
-if MISTRAL_API_KEY:
-    from mistralai.client import MistralClient
-    from mistralai.models.chat_completion import ChatMessage
-    mistral_client = MistralClient(api_key=MISTRAL_API_KEY)
 
 RSS_FEEDS = [
     "https://www.scarleteen.com/rss.xml",
@@ -98,7 +94,8 @@ def try_deepseek(prompt):
             max_tokens=1500
         )
         return response.choices[0].message.content.strip()
-    except:
+    except Exception as e:
+        print(f"  ❌ DeepSeek error: {e}")
         return None
 
 def try_gemini(prompt):
@@ -107,7 +104,8 @@ def try_gemini(prompt):
     try:
         response = gemini_model.generate_content(prompt)
         return response.text.strip()
-    except:
+    except Exception as e:
+        print(f"  ❌ Gemini error: {e}")
         return None
 
 def try_groq(prompt):
@@ -121,28 +119,14 @@ def try_groq(prompt):
             max_tokens=1500
         )
         return response.choices[0].message.content.strip()
-    except:
-        return None
-
-def try_mistral(prompt):
-    if not mistral_client:
-        return None
-    try:
-        messages = [ChatMessage(role="user", content=prompt)]
-        response = mistral_client.chat(
-            model="mistral-small-latest",
-            messages=messages,
-            temperature=0.8,
-            max_tokens=1500
-        )
-        return response.choices[0].message.content.strip()
-    except:
+    except Exception as e:
+        print(f"  ❌ Groq error: {e}")
         return None
 
 def generate_bangla_story(title, summary_en, source_name):
     prompt = BANGLA_PROMPT.format(title=title, summary=summary_en[:400], source=source_name)
     
-    # ১. DeepSeek
+    # ১. DeepSeek (সবচেয়ে নির্ভরযোগ্য ফ্রি)
     print("  🟡 Trying DeepSeek...")
     result = try_deepseek(prompt)
     if result:
@@ -161,13 +145,6 @@ def generate_bangla_story(title, summary_en, source_name):
     result = try_groq(prompt)
     if result:
         print("  ✅ Groq success!")
-        return result
-    
-    # ৪. Mistral
-    print("  🟡 Trying Mistral...")
-    result = try_mistral(prompt)
-    if result:
-        print("  ✅ Mistral success!")
         return result
     
     print("  ❌ All APIs failed!")
