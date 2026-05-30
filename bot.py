@@ -1,8 +1,8 @@
-import os, requests, feedparser, json, re
+import os, requests, feedparser, json, re, subprocess
 
 BOT_TOKEN = os.environ['BOT_TOKEN']
 CHANNEL_ID = os.environ['CHANNEL_ID']
-CACHE_FILE = "posted_cache.json"  # ক্যাশ ফাইলের নাম
+LOG_FILE = "posted_articles.json"
 
 RSS_FEEDS = [
     "https://www.scarleteen.com/rss.xml",
@@ -14,16 +14,14 @@ RSS_FEEDS = [
 ]
 
 def load_posted():
-    """ক্যাশ থেকে পোস্ট করা আইডি সেট লোড করো"""
     try:
-        with open(CACHE_FILE, 'r') as f:
+        with open(LOG_FILE, 'r') as f:
             return set(json.load(f))
     except:
         return set()
 
 def save_posted(posted):
-    """ক্যাশে আইডি সেট সংরক্ষণ করো (Actions post-job ক্যাশ স্টেপের জন্য)"""
-    with open(CACHE_FILE, 'w') as f:
+    with open(LOG_FILE, 'w') as f:
         json.dump(list(posted), f)
 
 def clean_html(raw):
@@ -39,7 +37,6 @@ def build_message(feed_title, title, summary):
     )
 
 def fetch_first_new(posted_ids):
-    """সব ফিড থেকে প্রথম নতুন (আগে পোস্ট হয়নি এমন) আর্টিকেল বের করো"""
     for feed_url in RSS_FEEDS:
         try:
             feed = feedparser.parse(feed_url)
@@ -66,6 +63,23 @@ def send_to_telegram(text):
         "disable_web_page_preview": True
     }).json()
 
+def git_commit():
+    """গিট কমিট ও পুশ (এবার নিশ্চিত)"""
+    try:
+        subprocess.run(["git", "config", "user.name", "GitHub Actions"], check=True)
+        subprocess.run(["git", "config", "user.email", "actions@github.com"], check=True)
+        subprocess.run(["git", "add", LOG_FILE], check=True)
+        # কোনো পরিবর্তন থাকলেই কমিট করবো
+        result = subprocess.run(["git", "diff", "--cached", "--quiet"], capture_output=True)
+        if result.returncode != 0:
+            subprocess.run(["git", "commit", "-m", "Update posted log"], check=True)
+            subprocess.run(["git", "push"], check=True)
+            print("✅ Log committed & pushed.")
+        else:
+            print("ℹ️ No change in log.")
+    except Exception as e:
+        print(f"❌ Git commit error: {e}")
+
 def main():
     print("🔍 Checking RSS feeds...")
     posted = load_posted()
@@ -74,12 +88,13 @@ def main():
         res = send_to_telegram(msg)
         if res.get('ok'):
             posted.add(article_id)
-            save_posted(posted)  # ক্যাশ ফাইল আপডেট
-            print("✅ New article posted:", article_id[:60])
+            save_posted(posted)
+            print("✅ Posted:", article_id[:60])
+            git_commit()  # পুশ করতেই হবে
         else:
-            print("❌ Failed to post:", res)
+            print("❌ Failed:", res)
     else:
-        print("ℹ️ No new articles. Skipping.")
+        print("ℹ️ No new articles.")
 
 if __name__ == "__main__":
     main()
