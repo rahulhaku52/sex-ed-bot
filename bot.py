@@ -1,54 +1,50 @@
-import os, json, random, requests, subprocess
+import os, json, requests, subprocess
 
 BOT_TOKEN = os.environ['BOT_TOKEN']
 CHANNEL_ID = os.environ['CHANNEL_ID']
-LOG_FILE = "posted_index.json"
+INDEX_FILE = "last_index.json"
 
 # পোস্ট লোড
 with open('posts.json', 'r', encoding='utf-8') as f:
     posts = json.load(f)
 
-# আগের পোস্ট করা ইনডেক্স লোড
+# শেষ ইনডেক্স পড়া
 try:
-    with open(LOG_FILE, 'r') as f:
-        posted = set(json.load(f))
+    with open(INDEX_FILE, 'r') as f:
+        last_index = json.load(f)
 except:
-    posted = set()
+    last_index = -1
 
-# বাকি পোস্টের ইনডেক্স
-available = [i for i in range(len(posts)) if i not in posted]
+# পরবর্তী ইনডেক্স (সিরিয়াল, সব শেষে আবার প্রথমে)
+next_index = (last_index + 1) % len(posts) if posts else 0
 
-if not available:
-    # সব শেষ হলে আবার রিসেট
-    posted = set()
-    available = list(range(len(posts)))
+# পোস্ট সিলেক্ট
+post = posts[next_index]
+text = post['text']
 
-# নতুন পোস্ট সিলেক্ট
-idx = random.choice(available)
-post = posts[idx]
-posted.add(idx)
-
-# লগ সেভ
-with open(LOG_FILE, 'w') as f:
-    json.dump(list(posted), f)
-
-# টেলিগ্রামে পাঠান
+# টেলিগ্রামে পাঠানো
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 res = requests.post(url, json={
     "chat_id": CHANNEL_ID,
-    "text": post['text'],
+    "text": text,
     "parse_mode": "HTML",
     "disable_web_page_preview": True
 }).json()
 
 print("✅ Posted" if res.get('ok') else f"❌ {res}")
 
-# গিট কমিট
+# ইনডেক্স আপডেট ও সেভ
+with open(INDEX_FILE, 'w') as f:
+    json.dump(next_index, f)
+
+# গিট কমিট ও পুশ
 subprocess.run(["git", "config", "user.name", "GitHub Actions"], check=True)
 subprocess.run(["git", "config", "user.email", "actions@github.com"], check=True)
-subprocess.run(["git", "add", LOG_FILE], check=True)
+subprocess.run(["git", "add", INDEX_FILE], check=True)
 result = subprocess.run(["git", "diff", "--cached", "--quiet"], capture_output=True)
 if result.returncode != 0:
-    subprocess.run(["git", "commit", "-m", "Update posted index"], check=True)
+    subprocess.run(["git", "commit", "-m", "Update last index"], check=True)
     subprocess.run(["git", "push"], check=True)
-    print("✅ Log committed")
+    print("✅ Index committed")
+else:
+    print("ℹ️  No change in index")
