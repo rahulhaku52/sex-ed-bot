@@ -2,7 +2,7 @@ name: Sex Ed Auto Poster
 
 on:
   schedule:
-    - cron: '0 */2 * * *'   # প্রতি ২ ঘণ্টায় (আপনি চাইলে বাড়াতে/কমাতে পারেন)
+    - cron: '0 */4 * * *'   # প্রতি ২ ঘণ্টায় (আপনি চাইলে বাড়াতে/কমাতে পারেন)
   workflow_dispatch:
 
 permissions:
