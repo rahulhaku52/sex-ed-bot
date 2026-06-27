@@ -22,13 +22,23 @@ next_index = (last_index + 1) % len(posts) if posts else 0
 post = posts[next_index]
 text = post['text']
 
+# 🔥 ইনলাইন বাটন তৈরি (শুধু এই অংশ যোগ)
+reply_markup = {
+    "inline_keyboard": [
+        [
+            {"text": "🔗 Join Our List", "url": "https://t.me/addlist/57pQLQQl0Oo1MDk9"}
+        ]
+    ]
+}
+
 # টেলিগ্রামে পাঠানো
 url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 res = requests.post(url, json={
     "chat_id": CHANNEL_ID,
     "text": text,
     "parse_mode": "HTML",
-    "disable_web_page_preview": True
+    "disable_web_page_preview": True,
+    "reply_markup": reply_markup   # ← এই লাইন যোগ
 }).json()
 
 print("✅ Posted" if res.get('ok') else f"❌ {res}")
